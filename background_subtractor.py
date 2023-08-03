@@ -16,14 +16,14 @@ elif args.algo == "GMG":
 elif args.algo == "MOG":
     backSub = cv2.bgsegm.createBackgroundSubtractorMOG()
 else:
-    backSub = cv2.createBackgroundSubtractorMOG2()
+    backSub = cv2.createBackgroundSubtractorMOG2(detectShadows=False)
   
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 
-mask = get_mask('./data/blackframe1.jpg')
+mask = get_mask('./data/mask/blackframe2.jpg')
   
 # capture frames from a camera 
-video = cv2.VideoCapture("./data/vnpt1.mp4")
+video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
 if (video.isOpened() == False): 
     print("Error reading video file")
     
@@ -31,36 +31,28 @@ frame_width = int(video.get(3))
 frame_height = int(video.get(4))
 size = (frame_width, frame_height)
 
-result = cv2.VideoWriter('./output/output.mp4', 
-                         cv2.VideoWriter_fourcc(*'mp4v'),
-                         30, size)
+fourcc = cv2.VideoWriter_fourcc(*'avc1')
+result = cv2.VideoWriter('./output/output.mp4', fourcc, 30.0, size)
+
 while(1):
     # read frames
     ret, frame = video.read()
     if ret:
         frame = apply_mask(frame, mask)
+        
+        # apply mask for background subtraction
+        mog_frame = backSub.apply(frame)
+                
+        # apply transformation to remove noise
+        mog_frame = cv2.morphologyEx(mog_frame, cv2.MORPH_OPEN, kernel)
+        
         result.write(frame)
-        cv2.imshow('Frame', frame)
-        if cv2.waitKey(1) & 0xFF == ord('s'):
+        # cv2.imshow('Frame', frame)
+        cv2.imshow('MOG', mog_frame)
+        if cv2.waitKey(1) & 0xFF == ord('c'):
             break
     else:
-        break
-
-    # # # apply mask for background subtraction
-    # fgmask = backSub.apply(img)
-            
-    # # apply transformation to remove noise
-    # fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
-
-    # # after removing noise
-    # cv2.imshow(f'{args.algo}', fgmask)
-    # cv2.imshow(f'{args.algo}', img)
-
-    # k = cv2.waitKey(30) & 0xff
-    # if k == 27:
-    #     break
-       
-
+        break     
 
 video.release()
 result.release()

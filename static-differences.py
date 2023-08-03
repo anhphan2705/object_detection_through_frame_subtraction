@@ -2,6 +2,8 @@ from skimage.metrics import structural_similarity
 from skimage.exposure import equalize_adapthist
 import cv2
 import numpy as np
+from masking import get_mask, apply_mask
+import time
 
 
 def get_image(directory):
@@ -242,10 +244,10 @@ def get_structural_similarity(first_image, second_image):
         float: The structural similarity index between the two images.
         numpy.ndarray: The difference image highlighting the dissimilarities.
     '''
-    print("[Console] Calculating differences")
+    # print("[Console] Calculating differences")
     (score, diff_img) = structural_similarity(first_image, second_image, full=True)
     diff_img = convert_to_cv2_format(diff_img)
-    print("[Console] Similarity score of {:.4f}%".format(score * 100))
+    # print("[Console] Similarity score of {:.4f}%".format(score * 100))
     return score, diff_img
 
 
@@ -289,41 +291,101 @@ def preprocess_image(image, gray=True, contrast=False, blur=False, edge=False):
 
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture('./data/vid_1.mp4')
-    # Get Image
-    first_img = get_image("./images/real/1.jpg")
-    second_img = get_image("./images/real/2.jpg")
+    # # Get Image
+    # first_img = get_image("./images/real/1.jpg")
+    # second_img = get_image("./images/real/2.jpg")
 
-    # Resize image if there is a difference in size
-    # Modify this if needed
-    if first_img.shape != second_img.shape:
-        first_img = resize_image(first_img, 1280, 720)[1]
-        second_img = resize_image(second_img, 1280, 720)[1]
+    # # Resize image if there is a difference in size
+    # # Modify this if needed
+    # if first_img.shape != second_img.shape:
+    #     first_img = resize_image(first_img, 1280, 720)[1]
+    #     second_img = resize_image(second_img, 1280, 720)[1]
 
-    # Preprocess the image before comparing
-    # Main step for the accuracy of the program
-    # Only set True for the methods that are needed for the processing images, otherwise False
-    # Remember for process both image the same
-    first_pre = preprocess_image(
-        first_img, 
-        gray=True, 
-        contrast=True, 
-        blur=True, 
-        edge=True
-    )
-    second_pre = preprocess_image(
-        second_img, 
-        gray=True, 
-        contrast=True, 
-        blur=True, 
-        edge=True
-    )
+    # # Preprocess the image before comparing
+    # # Main step for the accuracy of the program
+    # # Only set True for the methods that are needed for the processing images, otherwise False
+    # # Remember for process both image the same
+    # first_pre = preprocess_image(
+    #     first_img, 
+    #     gray=True, 
+    #     contrast=True, 
+    #     blur=True, 
+    #     edge=True
+    # )
+    # second_pre = preprocess_image(
+    #     second_img, 
+    #     gray=True, 
+    #     contrast=True, 
+    #     blur=True, 
+    #     edge=True
+    # )
 
-    # Compare and get the result
-    score, diff_img = get_structural_similarity(first_pre, second_pre)
+    # # Compare and get the result
+    # score, diff_img = get_structural_similarity(first_pre, second_pre)
 
-    # Marking the differences
-    first_rect = get_diff_rect(first_img, diff_img, 750)
-    second_rect = get_diff_rect(second_img, diff_img, 750)
-    mask = get_diff_mask(first_img, diff_img, 750)
-    filled_img = get_diff_filled(second_img, diff_img, 750)
+    # # Marking the differences
+    # first_rect = get_diff_rect(first_img, diff_img, 750)
+    # second_rect = get_diff_rect(second_img, diff_img, 750)
+    # mask = get_diff_mask(first_img, diff_img, 750)
+    # filled_img = get_diff_filled(second_img, diff_img, 750)
+    
+    mask = get_mask('./data/mask/blackframe2.jpg')
+    video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
+    if (video.isOpened() == False): 
+        raise Exception("Error reading video")
+        
+    frame_width = int(video.get(3))
+    frame_height = int(video.get(4))
+    size = (frame_width, frame_height)
+
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
+    result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, size)
+    
+    frame_count = 0
+    static_frame = None
+
+    while(True):
+        # read frames
+        ret, frame = video.read()
+        if ret:
+            frame = apply_mask(frame, mask)
+            if frame_count == 0:
+                static_frame = frame
+                static_frame = preprocess_image(
+                    static_frame, 
+                    gray=True, 
+                    contrast=False, 
+                    blur=False, 
+                    edge=False
+                )
+            if frame_count % 1 == 0:
+                second_pre = preprocess_image(
+                    frame, 
+                    gray=True, 
+                    contrast=False, 
+                    blur=False, 
+                    edge=False
+                )
+            dif_img = np.subtract(second_pre, static_frame)
+            # Absolute white to black
+            white_loc = np.where(dif_img>185)
+            dif_img[white_loc] = 0
+            # Black-ish to black
+            black_loc = np.where(dif_img<50)
+            dif_img[black_loc] = 0
+            
+            # kernel = np.ones((3, 3), np.uint8)
+            # dif_img = cv2.erode(dif_img, kernel, iterations=1)
+            # kernel = np.ones((7, 7), np.uint8)
+            # dif_img = cv2.dilate(dif_img, kernel, iterations=1)
+            result.write(dif_img)   
+            cv2.imshow('Frame', dif_img)
+            frame_count += 1
+            if cv2.waitKey(1) & 0xFF == ord('c'):
+                break
+        else:
+            break     
+
+    video.release()
+    result.release()
+    cv2.destroyAllWindows()
