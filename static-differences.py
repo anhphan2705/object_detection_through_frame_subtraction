@@ -111,7 +111,7 @@ def get_contours(image):
     return contours
 
 
-def get_diff_rect(image, diff_image, minDiffArea):
+def get_dif_box(image, diff_image, minDiffArea):
     """
     Draws rectangles around the differences in an image.
 
@@ -125,13 +125,37 @@ def get_diff_rect(image, diff_image, minDiffArea):
     """
     # print("[Console] Drawing rectangle around the differences")
     img = image.copy()
+    box_pos = []
     contours = get_contours(diff_image)
     for c in contours:
         area = cv2.contourArea(c)
         if area > minDiffArea:
             x, y, w, h = cv2.boundingRect(c)
-            cv2.rectangle(img, (x, y), (x + w, y + h), (36, 255, 12), 2)
-    return img
+            new_box = [x, y, x + w, y + h]
+            if len(box_pos) != 0:
+                valid = True
+                for box in box_pos:
+                    iou = get_iou(new_box, box)
+                    if iou > 0.02:
+                        x1, y1, x2, y2 = new_box
+                        area_new = (x2 - x1) * (y2 - y1)
+                        x1, y1, x2, y2 = box
+                        area_box = (x2 - x1) * (y2 - y1)
+                        if area_new > area_box:
+                            box_pos.append(new_box)
+                            if box in box_pos:
+                                box_pos.remove(box)
+                        valid = False
+                        break
+                if valid:
+                    box_pos.append(new_box)
+            else:
+                box_pos.append(new_box)
+    for box in box_pos:
+        x1, y1, x2, y2 = box
+        cv2.rectangle(img, (x1, y1), (x2, y2), (36, 255, 12), 2)
+
+    return img, box_pos
 
 
 def get_diff_filled(image, diff_image, minDiffArea=750):
@@ -193,42 +217,111 @@ def preprocess_image(image, gray=True, contrast=False, blur=False, edge=False):
     return image
 
 
-if __name__ == "__main__":
-    # # Marking the differences
-    # first_rect = get_diff_rect(first_img, diff_img, 750)
-    # second_rect = get_diff_rect(second_img, diff_img, 750)
-    # mask = get_diff_mask(first_img, diff_img, 750)
-    # filled_img = get_diff_filled(second_img, diff_img, 750)
+def get_iou(a, b, epsilon=1e-5):
+    """Given two boxes `a` and `b` defined as a list of four numbers:
+            [x1,y1,x2,y2]
+        where:
+            x1,y1 represent the upper left corner
+            x2,y2 represent the lower right corner
+        It returns the Intersect of Union score for these two boxes.
 
-    mask = get_mask("./data/mask/blackframe2.jpg")
-    video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
+    Args:
+        a:          (list of 4 numbers) [x1,y1,x2,y2]
+        b:          (list of 4 numbers) [x1,y1,x2,y2]
+        epsilon:    (float) Small value to prevent division by zero
+
+    Returns:
+        (float) The Intersect of Union score.
+    """
+    # COORDINATES OF THE INTERSECTION BOX
+    x1 = max(a[0], b[0])
+    y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2])
+    y2 = min(a[3], b[3])
+
+    # AREA OF OVERLAP - Area where the boxes intersect
+    width = x2 - x1
+    height = y2 - y1
+    # handle case where there is NO overlap
+    if (width < 0) or (height < 0):
+        return 0.0
+    area_overlap = width * height
+
+    # COMBINED AREA
+    area_a = (a[2] - a[0]) * (a[3] - a[1])
+    area_b = (b[2] - b[0]) * (b[3] - b[1])
+    area_combined = area_a + area_b - area_overlap
+
+    # RATIO OF AREA OF OVERLAP OVER COMBINED AREA
+    iou = area_overlap / (area_combined + epsilon)
+    return iou
+
+
+def still_object_detection(cur_obj, new_obj, wiggle_percent=0.85):
+    still_obj = []
+    if len(cur_obj) == 0:
+        return new_obj
+    else:
+        for obj in new_obj:
+            for still in cur_obj:
+                iou = get_iou(still, obj)
+                if iou > wiggle_percent:
+                    still_obj.append(obj)
+    if len(still_obj) == 0:
+        return new_obj
+    else:
+        return still_obj
+
+
+if __name__ == "__main__":
+    # mask = get_mask("./data/mask/blackframe2.jpg")
+    # video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
+    mask = get_mask(
+        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\data\\mask\\blackframe2.jpg"
+    )
+    video = cv2.VideoCapture(
+        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\data\\videos\\vnpt1.mp4"
+    )
     if video.isOpened() == False:
         raise Exception("Error reading video")
     else:
-        total_frame = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    frame_width = int(video.get(3))
-    frame_height = int(video.get(4))
-    size = (frame_width, frame_height)
+        TOTAL_FRAME = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        FPS = int(video.get(cv2.CAP_PROP_FPS))
+        FRAME_WIDTH = int(video.get(3))
+        FRAME_HEIGHT = int(video.get(4))
+        FRAME_SIZE = (FRAME_WIDTH, FRAME_HEIGHT)
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, size)
-    dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, size)
+    # result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
+    result = cv2.VideoWriter(
+        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video/output/out.mp4",
+        fourcc,
+        30.0,
+        FRAME_SIZE,
+    )
+    # dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
 
     frame_count = 0
     static_frame = None
-    
+    temp_obj = []
+    still_obj = {}
+
     since = time.time()
     while True:
         # read frames
         ret, frame = video.read()
+        frame_count += 1
         elapsed = time.time() - since
-        process_fps = (frame_count+1)//elapsed
-        expect_time = (total_frame-frame_count) // process_fps
-        print(f"\rProcessing frame {frame_count+1}/{total_frame+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
+        process_fps = round((frame_count + 1) / elapsed, 1)
+        expect_time = (TOTAL_FRAME+1 - frame_count) // process_fps
+        print(
+            f"\rProcessing frame {frame_count}/{TOTAL_FRAME+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s",
+            end=" ",
+            flush=True,
+        )
         if ret:
             masked = apply_mask(frame, mask)
-            if frame_count == 0:
+            if frame_count == 1:
                 static_frame = masked
                 static_frame = preprocess_image(
                     static_frame, gray=True, contrast=False, blur=False, edge=False
@@ -238,8 +331,7 @@ if __name__ == "__main__":
                     masked, gray=True, contrast=False, blur=False, edge=False
                 )
             dif_img = np.subtract(cur_frame, static_frame)
-            
-            
+
             # Absolute white to black
             white_loc = np.where(dif_img > 225)
             dif_img[white_loc] = 0
@@ -250,16 +342,14 @@ if __name__ == "__main__":
             obj_loc = np.where((dif_img > 50) & (dif_img < 225))
             dif_img[obj_loc] = 255
             dif_img = cv2.dilate(dif_img, (7, 7))
-            
 
             # filled = get_diff_filled(frame, dif_img, minDiffArea=750)
-            rect = get_diff_rect(frame, dif_img, minDiffArea=750)
+            rect, box_pos = get_dif_box(frame, dif_img, minDiffArea=750)
 
-            dif.write(dif_img)
+            # dif.write(dif_img)
             result.write(rect)
             # cv2.imshow("Frame", dif_img)
             cv2.imshow("Frame", rect)
-            frame_count += 1
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
         else:
@@ -267,5 +357,5 @@ if __name__ == "__main__":
 
     video.release()
     result.release()
-    dif.release()
+    # dif.release()
     cv2.destroyAllWindows()
