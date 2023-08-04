@@ -85,8 +85,8 @@ while(1):
     ret, frame = video.read()
     elapsed = time.time() - since
     process_fps = (frame_count+1)//elapsed
-    expect_time = (total_frame-frame_count+1) // process_fps
-    print(f"\rProcessing frame {frame_count+1}/{total_frame} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
+    expect_time = (total_frame-frame_count) // process_fps
+    print(f"\rProcessing frame {frame_count+1}/{total_frame+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
     if ret:
         masked = apply_mask(frame, mask)
         

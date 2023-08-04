@@ -211,8 +211,9 @@ if __name__ == "__main__":
     frame_height = int(video.get(4))
     size = (frame_width, frame_height)
 
-    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-    # result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, size)
+    fourcc = cv2.VideoWriter_fourcc(*"avc1")
+    result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, size)
+    dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, size)
 
     frame_count = 0
     static_frame = None
@@ -223,8 +224,8 @@ if __name__ == "__main__":
         ret, frame = video.read()
         elapsed = time.time() - since
         process_fps = (frame_count+1)//elapsed
-        expect_time = (total_frame-frame_count+1) // process_fps
-        print(f"\rProcessing frame {frame_count+1}/{total_frame} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
+        expect_time = (total_frame-frame_count) // process_fps
+        print(f"\rProcessing frame {frame_count+1}/{total_frame+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
         if ret:
             masked = apply_mask(frame, mask)
             if frame_count == 0:
@@ -237,17 +238,25 @@ if __name__ == "__main__":
                     masked, gray=True, contrast=False, blur=False, edge=False
                 )
             dif_img = np.subtract(cur_frame, static_frame)
+            
+            
             # Absolute white to black
             white_loc = np.where(dif_img > 225)
             dif_img[white_loc] = 0
             # Black-ish to black
             black_loc = np.where(dif_img < 50)
             dif_img[black_loc] = 0
+            # Object to white
+            obj_loc = np.where((dif_img > 50) & (dif_img < 225))
+            dif_img[obj_loc] = 255
+            dif_img = cv2.dilate(dif_img, (7, 7))
+            
 
             # filled = get_diff_filled(frame, dif_img, minDiffArea=750)
             rect = get_diff_rect(frame, dif_img, minDiffArea=750)
 
-            # result.write(dif_img)
+            dif.write(dif_img)
+            result.write(rect)
             # cv2.imshow("Frame", dif_img)
             cv2.imshow("Frame", rect)
             frame_count += 1
@@ -257,5 +266,6 @@ if __name__ == "__main__":
             break
 
     video.release()
-    # result.release()
+    result.release()
+    dif.release()
     cv2.destroyAllWindows()
