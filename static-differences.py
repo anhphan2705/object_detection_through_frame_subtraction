@@ -272,19 +272,19 @@ def still_object_detection(cur_obj, new_obj, wiggle_percent=0.85):
     else:
         return still_obj
     
-def label_time_obj(frame, key, time_still, font_size=0.8):
+def label_time_obj(frame, key, time_still, font_size=0.7):
     x1, y1, x2, y2 = box_pos
     frame = cv2.putText(frame,
                         f'ID={key}',
-                        org = (x1, y2),
+                        org = (x1+2, y2-4),
                         fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
                         fontScale=font_size, 
                         color=(0, 255, 0), 
                         thickness=1, 
                         lineType=cv2.LINE_AA)
     frame = cv2.putText(frame,
-                        f'Time:{(time_still // 60):.0f}m {(time_still % 60):.0f}',
-                        org = (x1, y1),
+                        f'{(time_still // 60):.0f}m{(time_still % 60):.0f}s',
+                        org = (x1+2, y1-4),
                         fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
                         fontScale=font_size, 
                         color=(0, 255, 0), 
@@ -292,16 +292,22 @@ def label_time_obj(frame, key, time_still, font_size=0.8):
                         lineType=cv2.LINE_AA)
     return frame
         
+
+def write_log(info_dict):
+    log = open('C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\log.txt', 'w')
+    textLines = []
+    textLines.append('############################## Detected New Stationary Objects ##############################\n')
+    for key, value in info_dict.items():
+        [status, frame_start, frame_end, pos] = value
+        time_still = int(round((frame_end - frame_start) / FPS, 0))
+        text = f'[ID: {key}]    Existing in frame: {status} | Time existed: {(time_still // 60):.0f}m{(time_still % 60):.0f}s | Position: ({pos[0]}, {pos[1]}) ({pos[2]}, {pos[3]})\n'
+        textLines.append(text)
+    log.writelines(textLines) 
+    log.close()
         
 if __name__ == "__main__":
-    # mask = get_mask("./data/mask/blackframe2.jpg")
-    # video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
-    mask = get_mask(
-        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\data\\mask\\blackframe2.jpg"
-    )
-    video = cv2.VideoCapture(
-        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\data\\videos\\vnpt1.mp4"
-    )
+    mask = get_mask("./data/mask/blackframe2.jpg")
+    video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
     if video.isOpened() == False:
         raise Exception("Error reading video")
     else:
@@ -312,13 +318,7 @@ if __name__ == "__main__":
         FRAME_SIZE = (FRAME_WIDTH, FRAME_HEIGHT)
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    # result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
-    # result = cv2.VideoWriter(
-    #     "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video/output/out.mp4",
-    #     fourcc,
-    #     30.0,
-    #     FRAME_SIZE,
-    # )
+    result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
     # dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
 
     frame_count = 0
@@ -335,7 +335,7 @@ if __name__ == "__main__":
         process_fps = round((frame_count + 1) / elapsed, 1)
         expect_time = (TOTAL_FRAME+1 - frame_count) // process_fps
         print(
-            f"\rProcessing frame {frame_count}/{TOTAL_FRAME+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s",
+            f"\rProcessing frame {frame_count}/{TOTAL_FRAME+1} in {(elapsed // 60):.0f}m{(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s",
             end=" ",
             flush=True,
         )
@@ -384,8 +384,7 @@ if __name__ == "__main__":
                 if still_obj is None:
                     for i, pos in enumerate(still_pos):
                         still_obj.update({i:[True, frame_count-3*FPS, frame_count, pos]})
-                        # cv2.imwrite(f"./output/still_obj/still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
-                        cv2.imwrite(f"C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\still_obj\\still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                        cv2.imwrite(f".output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
                 else:
                     for pos in still_pos.copy():
                         for key, value in still_obj.items():
@@ -400,13 +399,7 @@ if __name__ == "__main__":
                     if len(still_pos) > 0:
                         for pos in still_pos:
                             still_obj.update({len(still_obj):[True, frame_count-3*FPS, frame_count, pos]})  
-                            # cv2.imwrite(f"./output/still_obj/still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
-                            cv2.imwrite(f"C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\still_obj\\still_{frame_count}_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
-                print(temp_obj)
-                print(still_obj)
-            # dif.write(dif_img)
-            # result.write(rect)
-            # cv2.imshow("Frame", dif_img)
+                            cv2.imwrite(f"./output/still_id_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
             
             # Write time
             for key, value in still_obj.items():
@@ -414,15 +407,19 @@ if __name__ == "__main__":
                 if active:
                     x1, y1, x2, y2 = box_pos
                     time_still = int(round((end_frame - start_frame) / FPS, 0))
-                    rect = label_time_obj(rect, key, time_still, font_size=0.8)
+                    rect = label_time_obj(rect, key, time_still, font_size=0.7)
+            # Write log
+            write_log(still_obj)
             # Show frame
             cv2.imshow("Frame", rect)
+            # cv2.imshow("Frame", dif_img)
+            result.write(rect)
+            # dif.write(dif_img)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
         else:
             break
 
     video.release()
-    # result.release()
-    # dif.release()
+    result.release()
     cv2.destroyAllWindows()
