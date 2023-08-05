@@ -132,7 +132,7 @@ def get_dif_box(image, diff_image, minDiffArea):
         if area > minDiffArea:
             x, y, w, h = cv2.boundingRect(c)
             new_box = [x, y, x + w, y + h]
-            if len(box_pos) != 0:
+            if len(box_pos) > 0:
                 valid = True
                 for box in box_pos:
                     iou = get_iou(new_box, box)
@@ -271,8 +271,28 @@ def still_object_detection(cur_obj, new_obj, wiggle_percent=0.85):
         return new_obj
     else:
         return still_obj
-
-
+    
+def label_time_obj(frame, key, time_still, font_size=0.8):
+    x1, y1, x2, y2 = box_pos
+    frame = cv2.putText(frame,
+                        f'ID={key}',
+                        org = (x1, y2),
+                        fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                        fontScale=font_size, 
+                        color=(0, 255, 0), 
+                        thickness=1, 
+                        lineType=cv2.LINE_AA)
+    frame = cv2.putText(frame,
+                        f'Time:{(time_still // 60):.0f}m {(time_still % 60):.0f}',
+                        org = (x1, y1),
+                        fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                        fontScale=font_size, 
+                        color=(0, 255, 0), 
+                        thickness=1, 
+                        lineType=cv2.LINE_AA)
+    return frame
+        
+        
 if __name__ == "__main__":
     # mask = get_mask("./data/mask/blackframe2.jpg")
     # video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
@@ -293,12 +313,12 @@ if __name__ == "__main__":
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
     # result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
-    result = cv2.VideoWriter(
-        "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video/output/out.mp4",
-        fourcc,
-        30.0,
-        FRAME_SIZE,
-    )
+    # result = cv2.VideoWriter(
+    #     "C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video/output/out.mp4",
+    #     fourcc,
+    #     30.0,
+    #     FRAME_SIZE,
+    # )
     # dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
 
     frame_count = 0
@@ -343,12 +363,59 @@ if __name__ == "__main__":
             dif_img[obj_loc] = 255
             dif_img = cv2.dilate(dif_img, (7, 7))
 
-            # filled = get_diff_filled(frame, dif_img, minDiffArea=750)
             rect, box_pos = get_dif_box(frame, dif_img, minDiffArea=750)
-
+            
+            # Calculating still object
+            if frame_count % FPS == 0:
+                still_pos = []
+                last_obj = temp_obj
+                temp_obj = still_object_detection(temp_obj, box_pos, wiggle_percent=0.87)
+                
+                # Reseting active object status
+                if still_obj is not None:
+                    for key, value in still_obj.items():
+                        value[0] = False
+                        still_obj.update({key:value})
+                for old in last_obj:
+                    for new in temp_obj:
+                        iou = get_iou(new, old)
+                        if iou > 0.87:
+                            still_pos.append(new)
+                if still_obj is None:
+                    for i, pos in enumerate(still_pos):
+                        still_obj.update({i:[True, frame_count-3*FPS, frame_count, pos]})
+                        # cv2.imwrite(f"./output/still_obj/still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                        cv2.imwrite(f"C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\still_obj\\still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                else:
+                    for pos in still_pos.copy():
+                        for key, value in still_obj.items():
+                            past_still = value[3]
+                            iou = get_iou(past_still, pos)
+                            if iou > 0.87:
+                                value = [True, value[1], frame_count, pos]
+                                still_obj.update({key:value})
+                                if len(still_pos) > 0:
+                                    still_pos.remove(pos)
+                                break
+                    if len(still_pos) > 0:
+                        for pos in still_pos:
+                            still_obj.update({len(still_obj):[True, frame_count-3*FPS, frame_count, pos]})  
+                            # cv2.imwrite(f"./output/still_obj/still_{frame_count}_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                            cv2.imwrite(f"C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\still_obj\\still_{frame_count}_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
+                print(temp_obj)
+                print(still_obj)
             # dif.write(dif_img)
-            result.write(rect)
+            # result.write(rect)
             # cv2.imshow("Frame", dif_img)
+            
+            # Write time
+            for key, value in still_obj.items():
+                [active, start_frame, end_frame, box_pos] = value
+                if active:
+                    x1, y1, x2, y2 = box_pos
+                    time_still = int(round((end_frame - start_frame) / FPS, 0))
+                    rect = label_time_obj(rect, key, time_still, font_size=0.8)
+            # Show frame
             cv2.imshow("Frame", rect)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
@@ -356,6 +423,6 @@ if __name__ == "__main__":
             break
 
     video.release()
-    result.release()
+    # result.release()
     # dif.release()
     cv2.destroyAllWindows()
