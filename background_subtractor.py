@@ -69,7 +69,8 @@ video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
 if video.isOpened() == False:
     raise Exception("Error reading video")
 else:
-    total_frame = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    TOTAL_FRAME = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    FPS = int(video.get(cv2.CAP_PROP_FPS))
     
 frame_width = int(video.get(3))
 frame_height = int(video.get(4))
@@ -84,9 +85,13 @@ while(1):
     # read frames
     ret, frame = video.read()
     elapsed = time.time() - since
-    process_fps = (frame_count+1)//elapsed
-    expect_time = (total_frame-frame_count) // process_fps
-    print(f"\rProcessing frame {frame_count+1}/{total_frame+1} in {(elapsed // 60):.0f}m {(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s", end=' ', flush=True)
+    process_fps = round((frame_count + 1) / elapsed, 1)
+    expect_time = (TOTAL_FRAME+1 - frame_count) // process_fps
+    print(
+        f"\rProcessing frame {frame_count}/{TOTAL_FRAME+1} in {(elapsed // 60):.0f}m{(elapsed % 60):.0f}s at speed {process_fps} FPS. Expect done in {(expect_time // 60):.0f}m {(expect_time % 60):.0f}s",
+        end=" ",
+        flush=True,
+    )
     if ret:
         masked = apply_mask(frame, mask)
         
