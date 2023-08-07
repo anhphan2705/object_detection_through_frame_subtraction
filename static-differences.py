@@ -4,6 +4,8 @@ import numpy as np
 from masking import get_mask, apply_mask
 import time
 
+import ast
+
 
 def convert_to_gray(image):
     """
@@ -111,7 +113,7 @@ def get_contours(image):
     return contours
 
 
-def get_dif_box(image, diff_image, minDiffArea):
+def get_dif_box(image, diff_image, ignore_pos, minDiffArea=750, iou_thres=0.85):
     """
     Draws rectangles around the differences in an image.
 
@@ -151,31 +153,28 @@ def get_dif_box(image, diff_image, minDiffArea):
                     box_pos.append(new_box)
             else:
                 box_pos.append(new_box)
+        # Remove ignored object from new detected list
+    for pos in box_pos.copy():
+        for ignore in ignore_pos:
+            iou = get_iou(ignore, pos)
+            if iou > iou_thres:
+                if pos in box_pos:
+                    box_pos.remove(pos)
     for box in box_pos:
         x1, y1, x2, y2 = box
-        cv2.rectangle(img, (x1, y1), (x2, y2), (36, 255, 12), 2)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
     return img, box_pos
 
 
-def get_diff_filled(image, diff_image, minDiffArea=750):
-    """
-    Fills the differences in an image with a specific color.
-
-    Parameters:
-        image (numpy.ndarray): The input image.
-        diff_image (numpy.ndarray): The difference image between two images.
-        minDiffArea (int): The minimum contour area threshold for considering a difference.
-
-    Returns:
-        numpy.ndarray: The image with differences filled.
-    """
-    contours = get_contours(diff_image)
-    for c in contours:
-        area = cv2.contourArea(c)
-        if area > minDiffArea:
-            cv2.drawContours(image, [c], 0, (0, 255, 0), -1)
-    return image
+def get_ignore_list(directory):
+    locs = []
+    file = open(directory, "r")
+    lines = file.readlines()
+    for line in lines:
+        locs.append(ast.literal_eval(line.replace("\n", "")))
+    file.close()
+    return locs
 
 
 def preprocess_image(image, gray=True, contrast=False, blur=False, edge=False):
@@ -257,7 +256,8 @@ def get_iou(a, b, epsilon=1e-5):
     return iou
 
 
-def still_object_detection(cur_obj, new_obj, wiggle_percent=0.85):
+def still_object_detection(cur_obj, new_obj, iou_thres=0.85):
+    # Calculating still obj
     still_obj = []
     if len(cur_obj) == 0:
         return new_obj
@@ -265,41 +265,42 @@ def still_object_detection(cur_obj, new_obj, wiggle_percent=0.85):
         for obj in new_obj:
             for still in cur_obj:
                 iou = get_iou(still, obj)
-                if iou > wiggle_percent:
+                if iou > iou_thres:
                     still_obj.append(obj)
     if len(still_obj) == 0:
         return new_obj
     else:
         return still_obj
     
-def label_time_obj(frame, key, time_still, font_size=0.7):
+    
+def label_time_obj(frame, key, time_still, thickness=2, color=(51, 153, 255) ,font_size=0.7):
     x1, y1, x2, y2 = box_pos
     frame = cv2.putText(frame,
                         f'ID={key}',
                         org = (x1+2, y2-4),
-                        fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                         fontScale=font_size, 
-                        color=(0, 255, 0), 
-                        thickness=1, 
+                        color=color, 
+                        thickness=thickness, 
                         lineType=cv2.LINE_AA)
     frame = cv2.putText(frame,
                         f'{(time_still // 60):.0f}m{(time_still % 60):.0f}s',
                         org = (x1+2, y1-4),
-                        fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                         fontScale=font_size, 
-                        color=(0, 255, 0), 
-                        thickness=1, 
+                        color=color, 
+                        thickness=thickness, 
                         lineType=cv2.LINE_AA)
     return frame
         
 
 def write_log(info_dict):
-    log = open('C:\\Users\\black\\Documents\\VNPT\\Object-Differences-Video\\output\\log.txt', 'w')
+    log = open('./output/log.txt', 'w')
     textLines = []
     textLines.append('############################## Detected New Stationary Objects ##############################\n')
     for key, value in info_dict.items():
-        [status, frame_start, frame_end, pos] = value
-        time_still = int(round((frame_end - frame_start) / FPS, 0))
+        [status, start_frame, end_frame, pos] = value
+        time_still = time_still = (end_frame - start_frame) // FPS
         text = f'[ID: {key}]    Existing in frame: {status} | Time existed: {(time_still // 60):.0f}m{(time_still % 60):.0f}s | Position: ({pos[0]}, {pos[1]}) ({pos[2]}, {pos[3]})\n'
         textLines.append(text)
     log.writelines(textLines) 
@@ -316,6 +317,7 @@ if __name__ == "__main__":
         FRAME_WIDTH = int(video.get(3))
         FRAME_HEIGHT = int(video.get(4))
         FRAME_SIZE = (FRAME_WIDTH, FRAME_HEIGHT)
+        
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
     result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
@@ -339,6 +341,7 @@ if __name__ == "__main__":
             end=" ",
             flush=True,
         )
+
         if ret:
             masked = apply_mask(frame, mask)
             if frame_count == 1:
@@ -362,14 +365,18 @@ if __name__ == "__main__":
             obj_loc = np.where((dif_img > 50) & (dif_img < 225))
             dif_img[obj_loc] = 255
             dif_img = cv2.dilate(dif_img, (7, 7))
-
-            rect, box_pos = get_dif_box(frame, dif_img, minDiffArea=750)
             
+            IGNORE_BOX = get_ignore_list('./data/ignore.txt')
+            rect, box_pos = get_dif_box(frame, dif_img, ignore_pos=IGNORE_BOX, minDiffArea=750)
+                        
             # Calculating still object
-            if frame_count % FPS == 0:
+            UPDATE_RATE = FPS
+            IOU = 0.87
+            
+            if frame_count % UPDATE_RATE == 0:
                 still_pos = []
                 last_obj = temp_obj
-                temp_obj = still_object_detection(temp_obj, box_pos, wiggle_percent=0.87)
+                temp_obj = still_object_detection(temp_obj, box_pos, iou_thres=IOU)
                 
                 # Reseting active object status
                 if still_obj is not None:
@@ -379,18 +386,18 @@ if __name__ == "__main__":
                 for old in last_obj:
                     for new in temp_obj:
                         iou = get_iou(new, old)
-                        if iou > 0.87:
+                        if iou > IOU:
                             still_pos.append(new)
                 if still_obj is None:
                     for i, pos in enumerate(still_pos):
-                        still_obj.update({i:[True, frame_count-3*FPS, frame_count, pos]})
-                        cv2.imwrite(f".output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                        still_obj.update({i:[True, frame_count-3*UPDATE_RATE, frame_count, pos]})
+                        cv2.imwrite(f"./output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
                 else:
                     for pos in still_pos.copy():
                         for key, value in still_obj.items():
                             past_still = value[3]
                             iou = get_iou(past_still, pos)
-                            if iou > 0.87:
+                            if iou > IOU:
                                 value = [True, value[1], frame_count, pos]
                                 still_obj.update({key:value})
                                 if len(still_pos) > 0:
@@ -398,7 +405,7 @@ if __name__ == "__main__":
                                 break
                     if len(still_pos) > 0:
                         for pos in still_pos:
-                            still_obj.update({len(still_obj):[True, frame_count-3*FPS, frame_count, pos]})  
+                            still_obj.update({len(still_obj):[True, frame_count-3*UPDATE_RATE, frame_count, pos]})  
                             cv2.imwrite(f"./output/still_id_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
             
             # Write time
@@ -406,8 +413,8 @@ if __name__ == "__main__":
                 [active, start_frame, end_frame, box_pos] = value
                 if active:
                     x1, y1, x2, y2 = box_pos
-                    time_still = int(round((end_frame - start_frame) / FPS, 0))
-                    rect = label_time_obj(rect, key, time_still, font_size=0.7)
+                    time_still = (end_frame - start_frame) // FPS
+                    rect = label_time_obj(rect, key, time_still, font_size=0.6)
             # Write log
             write_log(still_obj)
             # Show frame
