@@ -1,13 +1,12 @@
-from skimage.exposure import equalize_adapthist
 import cv2
 import numpy as np
-from masking import get_mask, apply_mask
 import time
-
+import argparse
 import ast
+from skimage.exposure import equalize_adapthist
 
 
-def convert_to_gray(image):
+def get_gray(image):
     """
     Converts an image from BGR color space to grayscale.
 
@@ -18,20 +17,6 @@ def convert_to_gray(image):
         numpy.ndarray: The grayscale image.
     """
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-
-def convert_to_cv2_format(image):
-    """
-    Converts an image with any data type to a format readable by OpenCV (BGR, uint8).
-
-    Parameters:
-        image (SSIM image): The input image with any data type
-
-    Returns:
-        numpy.ndarray: The image converted to OpenCV readable format (BGR, uint8).
-    """
-    image = (image * 255).astype("uint8")
-    return image
 
 
 def get_blur(image, d=30, sigColor=80, sigSpace=80):
@@ -64,7 +49,7 @@ def get_equalize_adapt(image, c_limit=0.1):
     equalized = equalize_adapthist(
         image, kernel_size=None, clip_limit=c_limit, nbins=256
     )
-    return convert_to_cv2_format(equalized)
+    return set_ndarray(equalized)
 
 
 def get_threshold(image):
@@ -113,6 +98,11 @@ def get_contours(image):
     return contours
 
 
+def get_mask(directory):
+    mask = cv2.imread(directory)
+    return cv2.threshold(mask, 100, 255, cv2.THRESH_BINARY)[1]
+
+
 def get_dif_box(image, diff_image, ignore_pos, minDiffArea=750, iou_thres=0.85):
     """
     Draws rectangles around the differences in an image.
@@ -125,7 +115,6 @@ def get_dif_box(image, diff_image, ignore_pos, minDiffArea=750, iou_thres=0.85):
     Returns:
         numpy.ndarray: The image with rectangles drawn around the differences.
     """
-    # print("[Console] Drawing rectangle around the differences")
     img = image.copy()
     box_pos = []
     contours = get_contours(diff_image)
@@ -177,7 +166,7 @@ def get_ignore_list(directory):
     return locs
 
 
-def preprocess_image(image, gray=True, contrast=False, blur=False, edge=False):
+def get_preprocess(image, gray=True, contrast=False, blur=False, edge=False):
     """
     Preprocesses an image by applying various image processing techniques.
 
@@ -192,7 +181,7 @@ def preprocess_image(image, gray=True, contrast=False, blur=False, edge=False):
         numpy.ndarray: The preprocessed image.
     """
     if gray:
-        image = convert_to_gray(image)
+        image = get_gray(image)
     # show_image("Gray", image)
     # write_image("./gray.jpg", image)
     if contrast:
@@ -256,8 +245,7 @@ def get_iou(a, b, epsilon=1e-5):
     return iou
 
 
-def still_object_detection(cur_obj, new_obj, iou_thres=0.85):
-    # Calculating still obj
+def get_stationary_object(cur_obj, new_obj, iou_thres=0.9):
     still_obj = []
     if len(cur_obj) == 0:
         return new_obj
@@ -272,8 +260,27 @@ def still_object_detection(cur_obj, new_obj, iou_thres=0.85):
     else:
         return still_obj
     
+
+def set_ndarray(image):
+    """
+    Converts an image with any data type to a format readable by OpenCV (BGR, uint8).
+
+    Parameters:
+        image (SSIM image): The input image with any data type
+
+    Returns:
+        numpy.ndarray: The image converted to OpenCV readable format (BGR, uint8).
+    """
+    image = (image * 255).astype("uint8")
+    return image
+
+
+def set_mask(image, mask):
+    bit_mask = mask/255
+    return np.array(np.multiply(bit_mask, image), np.uint8)
     
-def label_time_obj(frame, key, time_still, thickness=2, color=(51, 153, 255) ,font_size=0.7):
+    
+def set_label(frame, key, time_still, thickness=2, color=(51, 153, 255) ,font_size=0.7):
     x1, y1, x2, y2 = box_pos
     frame = cv2.putText(frame,
                         f'ID={key}',
@@ -307,8 +314,23 @@ def write_log(info_dict):
     log.close()
         
 if __name__ == "__main__":
-    mask = get_mask("./data/mask/blackframe2.jpg")
-    video = cv2.VideoCapture("./data/videos/vnpt1.mp4")
+    parser = argparse.ArgumentParser(description='This program tracks the differences from the starting frame of the video. Object that is detected will be marked with a green box. Object that is stationary for 1s will be marked and count time.')
+    parser.add_argument('-i','--input', type=str, help='(String) Path to a video or a sequence of image.', default='./data/videos/vid_1.mp4')
+    parser.add_argument('-o','--output', type=str, help='(String) Path to where output video should be written including the video name itself', default='./output/output.mp4')
+    parser.add_argument('-m','--mask', type=str, help='(String) Path to an black white image served as a mask. Black part will not be detected', default='./data/mask/mask.jpg')
+    parser.add_argument('-u','--iou', type=float, help='(float) Intersection over Union value. Use to match the approximate location of an object', default=0.87)
+    parser.add_argument('-r','--refresh', type=int, help='(int) How many frame pass before the program check for stationary object. The amount of frame passed before still object detection will be this number x3', default=30)
+    parser.add_argument('-g','--ignore', type=str, help='(String) Path to where the box locations should be ignored by the program. One box each line only. Format: [x1, y1, x2, y2]', default='./data/ignore.txt')
+    args = parser.parse_args()
+    
+    SOURCE_PATH = args.input
+    MASK = args.mask
+    IOU = args.iou
+    UPDATE_RATE = args.refresh
+    OUT_PATH = args.output
+    IGNORES_PATH = args.ignore
+    
+    video = cv2.VideoCapture(SOURCE_PATH)
     if video.isOpened() == False:
         raise Exception("Error reading video")
     else:
@@ -318,10 +340,9 @@ if __name__ == "__main__":
         FRAME_HEIGHT = int(video.get(4))
         FRAME_SIZE = (FRAME_WIDTH, FRAME_HEIGHT)
         
-
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    result = cv2.VideoWriter('./output/out.mp4', fourcc, 30.0, FRAME_SIZE)
-    # dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
+    # result = cv2.VideoWriter(OUT_PATH, fourcc, 30.0, FRAME_SIZE)
+    dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
 
     frame_count = 0
     static_frame = None
@@ -343,19 +364,22 @@ if __name__ == "__main__":
         )
 
         if ret:
-            masked = apply_mask(frame, mask)
+            masked = frame
+            if MASK != None:
+                mask = get_mask(MASK)
+                masked = set_mask(frame, mask)
             if frame_count == 1:
-                static_frame = masked
-                static_frame = preprocess_image(
-                    static_frame, gray=True, contrast=False, blur=False, edge=False
-                )
-            if frame_count % 1 == 0:
-                cur_frame = preprocess_image(
+                static_frame = get_preprocess(
                     masked, gray=True, contrast=False, blur=False, edge=False
                 )
+            if frame_count % 1 == 0:
+                cur_frame = get_preprocess(
+                    masked, gray=True, contrast=False, blur=False, edge=False
+                )
+                
             dif_img = np.subtract(cur_frame, static_frame)
 
-            # Absolute white to black
+            # White to black
             white_loc = np.where(dif_img > 225)
             dif_img[white_loc] = 0
             # Black-ish to black
@@ -366,17 +390,15 @@ if __name__ == "__main__":
             dif_img[obj_loc] = 255
             dif_img = cv2.dilate(dif_img, (7, 7))
             
-            IGNORE_BOX = get_ignore_list('./data/ignore.txt')
-            rect, box_pos = get_dif_box(frame, dif_img, ignore_pos=IGNORE_BOX, minDiffArea=750)
+            # Get object differences
+            ignore_list = get_ignore_list(IGNORES_PATH)
+            rect, box_pos = get_dif_box(frame, dif_img, ignore_pos=ignore_list, minDiffArea=750)
                         
-            # Calculating still object
-            UPDATE_RATE = FPS
-            IOU = 0.87
-            
+            # Calculating stationary object            
             if frame_count % UPDATE_RATE == 0:
                 still_pos = []
                 last_obj = temp_obj
-                temp_obj = still_object_detection(temp_obj, box_pos, iou_thres=IOU)
+                temp_obj = get_stationary_object(temp_obj, box_pos, iou_thres=IOU)
                 
                 # Reseting active object status
                 if still_obj is not None:
@@ -414,19 +436,20 @@ if __name__ == "__main__":
                 if active:
                     x1, y1, x2, y2 = box_pos
                     time_still = (end_frame - start_frame) // FPS
-                    rect = label_time_obj(rect, key, time_still, font_size=0.6)
+                    rect = set_label(rect, key, time_still, font_size=0.6)
             # Write log
             write_log(still_obj)
             # Show frame
-            cv2.imshow("Frame", rect)
-            # cv2.imshow("Frame", dif_img)
-            result.write(rect)
-            # dif.write(dif_img)
+            # cv2.imshow("Frame", rect)
+            cv2.imshow("Frame", dif_img)
+            # result.write(rect)
+            dif.write(dif_img)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
         else:
             break
 
     video.release()
-    result.release()
+    # result.release()
+    dif.release()
     cv2.destroyAllWindows()
