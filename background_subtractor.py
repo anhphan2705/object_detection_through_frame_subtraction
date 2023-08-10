@@ -1,9 +1,12 @@
 # importing libraries
 import cv2
 import argparse
-from masking import get_mask, apply_mask
+import numpy as np
 import time
 
+def get_mask(directory):
+    mask = cv2.imread(directory)
+    return cv2.threshold(mask, 100, 255, cv2.THRESH_BINARY)[1]
 
 def get_contours(image):
     '''
@@ -44,6 +47,10 @@ def get_diff_rect(image, diff_image, minDiffArea):
             x, y, w, h = cv2.boundingRect(c)
             cv2.rectangle(img, (x, y), (x + w, y + h), (36, 255, 12), 2)
     return img
+
+def set_mask(image, mask):
+    bit_mask = mask/255
+    return np.array(np.multiply(bit_mask, image), np.uint8)
 
 parser = argparse.ArgumentParser(description='This program shows how to use background subtraction methods provided by \
  OpenCV. You can process both videos and images.')
@@ -93,7 +100,7 @@ while(1):
         flush=True,
     )
     if ret:
-        masked = apply_mask(frame, mask)
+        masked = set_mask(frame, mask)
         
         # apply mask for background subtraction
         mog_frame = backSub.apply(masked)

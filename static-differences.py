@@ -316,11 +316,14 @@ def write_log(info_dict):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='This program tracks the differences from the starting frame of the video. Object that is detected will be marked with a green box. Object that is stationary for 1s will be marked and count time.')
     parser.add_argument('-i','--input', type=str, help='(String) Path to a video or a sequence of image.', default='./data/videos/vid_1.mp4')
-    parser.add_argument('-o','--output', type=str, help='(String) Path to where output video should be written including the video name itself', default='./output/output.mp4')
+    parser.add_argument('-o','--output', type=str, help='(String) Path to where outputs should be written to, dont include video name', default='./output')
     parser.add_argument('-m','--mask', type=str, help='(String) Path to an black white image served as a mask. Black part will not be detected', default='./data/mask/mask.jpg')
     parser.add_argument('-u','--iou', type=float, help='(float) Intersection over Union value. Use to match the approximate location of an object', default=0.87)
     parser.add_argument('-r','--refresh', type=int, help='(int) How many frame pass before the program check for stationary object. The amount of frame passed before still object detection will be this number x3', default=30)
     parser.add_argument('-g','--ignore', type=str, help='(String) Path to where the box locations should be ignored by the program. One box each line only. Format: [x1, y1, x2, y2]', default='./data/ignore.txt')
+    parser.add_argument('-t','--track', type=bool, help='(bool) False to turn off tracking, true otherwise', default=True)
+    parser.add_argument('-b','--bsub', type=bool, help='(bool) False to turn off background subtraction, false otherwise. Note: Must be true to track objects', default=True)
+    parser.add_argument('-k','--outmask', type=bool, help='(bool) True to save masked video, False otherwise', default=False)
     args = parser.parse_args()
     
     SOURCE_PATH = args.input
@@ -329,6 +332,9 @@ if __name__ == "__main__":
     UPDATE_RATE = args.refresh
     OUT_PATH = args.output
     IGNORES_PATH = args.ignore
+    TRACK = args.track
+    BSUB = args.bsub
+    OUT_MASK = args.outmask
     
     video = cv2.VideoCapture(SOURCE_PATH)
     if video.isOpened() == False:
@@ -341,8 +347,11 @@ if __name__ == "__main__":
         FRAME_SIZE = (FRAME_WIDTH, FRAME_HEIGHT)
         
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    # result = cv2.VideoWriter(OUT_PATH, fourcc, 30.0, FRAME_SIZE)
-    dif = cv2.VideoWriter('./output/dif.mp4', fourcc, 30.0, FRAME_SIZE)
+    result = cv2.VideoWriter(OUT_PATH + '/output.mp4', fourcc, 30.0, FRAME_SIZE)
+    if OUT_MASK:
+        masked_vid = cv2.VideoWriter(OUT_PATH + '/masked.mp4', fourcc, 30.0, FRAME_SIZE)
+    if BSUB:
+        dif = cv2.VideoWriter(OUT_PATH + '/dif.mp4', fourcc, 30.0, FRAME_SIZE)
 
     frame_count = 0
     static_frame = None
@@ -376,80 +385,90 @@ if __name__ == "__main__":
                 cur_frame = get_preprocess(
                     masked, gray=True, contrast=False, blur=False, edge=False
                 )
-                
-            dif_img = np.subtract(cur_frame, static_frame)
+            if BSUB:   
+                dif_img = np.subtract(cur_frame, static_frame)
 
-            # White to black
-            white_loc = np.where(dif_img > 225)
-            dif_img[white_loc] = 0
-            # Black-ish to black
-            black_loc = np.where(dif_img < 50)
-            dif_img[black_loc] = 0
-            # Object to white
-            obj_loc = np.where((dif_img > 50) & (dif_img < 225))
-            dif_img[obj_loc] = 255
-            dif_img = cv2.dilate(dif_img, (7, 7))
-            
-            # Get object differences
-            ignore_list = get_ignore_list(IGNORES_PATH)
-            rect, box_pos = get_dif_box(frame, dif_img, ignore_pos=ignore_list, minDiffArea=750)
+                # White to black
+                white_loc = np.where(dif_img > 225)
+                dif_img[white_loc] = 0
+                # Black-ish to black
+                black_loc = np.where(dif_img < 50)
+                dif_img[black_loc] = 0
+                # Object to white
+                obj_loc = np.where((dif_img > 50) & (dif_img < 225))
+                dif_img[obj_loc] = 255
+                dif_img = cv2.dilate(dif_img, (7, 7))
+
+                if TRACK:
+                    # Get object differences
+                    ignore_list = get_ignore_list(IGNORES_PATH)
+                    rect, box_pos = get_dif_box(frame, dif_img, ignore_pos=ignore_list, minDiffArea=750)
+                                
+                    # Calculating stationary object            
+                    if frame_count % UPDATE_RATE == 0:
+                        still_pos = []
+                        last_obj = temp_obj
+                        temp_obj = get_stationary_object(temp_obj, box_pos, iou_thres=IOU)
                         
-            # Calculating stationary object            
-            if frame_count % UPDATE_RATE == 0:
-                still_pos = []
-                last_obj = temp_obj
-                temp_obj = get_stationary_object(temp_obj, box_pos, iou_thres=IOU)
-                
-                # Reseting active object status
-                if still_obj is not None:
-                    for key, value in still_obj.items():
-                        value[0] = False
-                        still_obj.update({key:value})
-                for old in last_obj:
-                    for new in temp_obj:
-                        iou = get_iou(new, old)
-                        if iou > IOU:
-                            still_pos.append(new)
-                if still_obj is None:
-                    for i, pos in enumerate(still_pos):
-                        still_obj.update({i:[True, frame_count-3*UPDATE_RATE, frame_count, pos]})
-                        cv2.imwrite(f"./output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
-                else:
-                    for pos in still_pos.copy():
-                        for key, value in still_obj.items():
-                            past_still = value[3]
-                            iou = get_iou(past_still, pos)
-                            if iou > IOU:
-                                value = [True, value[1], frame_count, pos]
+                        # Reseting active object status
+                        if still_obj is not None:
+                            for key, value in still_obj.items():
+                                value[0] = False
                                 still_obj.update({key:value})
-                                if len(still_pos) > 0:
-                                    still_pos.remove(pos)
-                                break
-                    if len(still_pos) > 0:
-                        for pos in still_pos:
-                            still_obj.update({len(still_obj):[True, frame_count-3*UPDATE_RATE, frame_count, pos]})  
-                            cv2.imwrite(f"./output/still_id_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
-            
-            # Write time
-            for key, value in still_obj.items():
-                [active, start_frame, end_frame, box_pos] = value
-                if active:
-                    x1, y1, x2, y2 = box_pos
-                    time_still = (end_frame - start_frame) // FPS
-                    rect = set_label(rect, key, time_still, font_size=0.6)
+                        for old in last_obj:
+                            for new in temp_obj:
+                                iou = get_iou(new, old)
+                                if iou > IOU:
+                                    still_pos.append(new)
+                        if still_obj is None:
+                            for i, pos in enumerate(still_pos):
+                                still_obj.update({i:[True, frame_count-3*UPDATE_RATE, frame_count, pos]})
+                                cv2.imwrite(f"./output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+                        else:
+                            for pos in still_pos.copy():
+                                for key, value in still_obj.items():
+                                    past_still = value[3]
+                                    iou = get_iou(past_still, pos)
+                                    if iou > IOU:
+                                        value = [True, value[1], frame_count, pos]
+                                        still_obj.update({key:value})
+                                        if len(still_pos) > 0:
+                                            still_pos.remove(pos)
+                                        break
+                            if len(still_pos) > 0:
+                                for pos in still_pos:
+                                    still_obj.update({len(still_obj):[True, frame_count-3*UPDATE_RATE, frame_count, pos]})  
+                                    cv2.imwrite(f"./output/still_id_{len(still_obj)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])          
+                    
+                    # Write time
+                    for key, value in still_obj.items():
+                        [active, start_frame, end_frame, box_pos] = value
+                        if active:
+                            x1, y1, x2, y2 = box_pos
+                            time_still = (end_frame - start_frame) // FPS
+                            rect = set_label(rect, key, time_still, font_size=0.6)
             # Write log
             write_log(still_obj)
             # Show frame
-            # cv2.imshow("Frame", rect)
-            cv2.imshow("Frame", dif_img)
-            # result.write(rect)
-            dif.write(dif_img)
+            if OUT_MASK:
+                masked_vid.write(masked)
+            if BSUB:
+                # cv2.imshow("BSUB", dif_img)
+                dif.write(dif_img)
+            if TRACK:
+                # cv2.imshow("TRACKED", rect)
+                result.write(rect)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
         else:
             break
 
     video.release()
-    # result.release()
-    dif.release()
+    if OUT_MASK:
+        masked_vid.release()
+    if BSUB:
+        dif.release()
+    if TRACK:
+        result.release()
+        
     cv2.destroyAllWindows()
