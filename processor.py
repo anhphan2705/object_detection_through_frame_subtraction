@@ -21,7 +21,8 @@ class VideoProcessor:
         self.black_threshold = black_threshold
         self.white_threshold = white_threshold
         self.frame_count = 0
-        self.still_objects = {}
+        self.temp_stationary_objects = []
+        self.stationary_objects = {}
         self.background_frame = np.array([])
 
 
@@ -217,7 +218,12 @@ class VideoProcessor:
             
             # Tracking objects
             tracked_frame, object_detected = self.track_objects(frame, difference_mask)
-                
+
+            # Track stationary objects
+            if self.frame_count % self.tracking.DEFAULT_TRACK_RATE == 0:
+                prev_stationary_objects = self.temp_stationary_objects
+                self.temp_stationary_objects = self.tracking.find_temp_stationary(prev_objects=self.temp_stationary_objects, new_objects=object_detected)
+            
             cv2.imshow("Video", tracked_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break

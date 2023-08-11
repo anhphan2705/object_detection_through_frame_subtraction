@@ -13,6 +13,7 @@ class Tracking:
         self.ignores = self.get_ignore_list(ignore_path) if ignore_path else None
         self.MIN_SIZE_THRESHOLD = min_size
         self.IOU_THRESHOLD = iou_threshold
+        self.stationary_objects = {}
         
 
     def get_contours(self, image):
@@ -148,3 +149,64 @@ class Tracking:
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         return frame, filtered_objects
+    
+    
+    def find_temp_stationary(self, prev_objects, new_objects):
+        """
+        Find temporary stationary objects by comparing new objects with previous objects.
+
+        Parameters:
+            prev_objects (list): List of previous objects.
+            new_objects (list): List of new objects.
+
+        Returns:
+            list: List of temporary stationary objects.
+        """
+        stationary_objects = []
+        if len(prev_objects) == 0:
+            return new_objects
+        else:
+            for obj in new_objects:
+                if not self.is_overlapping(obj, prev_objects):
+                    stationary_objects.append(obj)
+        if len(stationary_objects) == 0:
+            return new_objects
+        else:
+            return stationary_objects
+        
+        
+    # def find_stationary_objects(self, prev_objects, new_objects):
+    #     stationary_positions = []
+    #     # Reseting active status for all stationary objects
+    #     if self.stationary_objects is not None:
+    #         for key, value in self.stationary_objects.items():
+    #             value[0] = False
+    #             self.stationary_objects.update({key:value})
+        
+    #     # Determine if detected objects are currently stationary
+    #     for stationary_object in new_objects:
+    #         if not self.is_overlapping(stationary_object, prev_objects):
+    #             stationary_positions.append(stationary_object)
+                
+    #     if self.stationary_objects is None:
+    #         return stationary_positions
+    #         # for i, pos in enumerate(stationary_positions):
+    #         #     self.stationary_objects.update({i:[True, frame_count-3*UPDATE_RATE, frame_count, pos]})
+    #         #     cv2.imwrite(f"./output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
+    #     else:
+    #         for pos in stationary_positions.copy():
+    #             for key, value in self.stationary_objects.items():
+    #                 pass
+    #                 past_still = value[3]
+    #                 # iou = get_iou(past_still, pos)
+    #                 # if iou > IOU:
+    #                     # value = [True, value[1], frame_count, pos]
+    #                     # self.stationary_objects.update({key:value})
+    #                     # if len(stationary_positions) > 0:
+    #                     #     stationary_positions.remove(pos)
+    #                     # break
+    #         if len(stationary_positions) > 0:
+    #             return stationary_positions
+    #             # for pos in stationary_positions:
+    #             #     self.stationary_objects.update({len(self.stationary_objects):[True, frame_count-3*UPDATE_RATE, frame_count, pos]})  
+    #             #     cv2.imwrite(f"./output/still_id_{len(self.stationary_objects)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])         
