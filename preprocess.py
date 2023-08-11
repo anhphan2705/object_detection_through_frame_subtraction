@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from skimage.exposure import equalize_adapthist
-from utilities import set_ndarray
 
 class PreProcessImage:
     
@@ -71,7 +70,8 @@ class PreProcessImage:
         equalized = equalize_adapthist(
             image, kernel_size=None, clip_limit=c_limit, nbins=256
         )
-        return set_ndarray(equalized)
+        equalized = (equalized * 255).astype("uint8")
+        return equalized
 
 
     def get_threshold(self, image):
