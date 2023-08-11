@@ -451,13 +451,16 @@ if __name__ == "__main__":
             write_log(still_obj)
             # Show frame
             if OUT_MASK:
-                masked_vid.write(masked)
+                # masked_vid.write(masked)
+                pass
             if BSUB:
                 # cv2.imshow("BSUB", dif_img)
-                dif.write(dif_img)
+                pass
+                # dif.write(dif_img)
             if TRACK:
-                # cv2.imshow("TRACKED", rect)
-                result.write(rect)
+                cv2.imshow("TRACKED", rect)
+                # result.write(rect)
+
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
         else:

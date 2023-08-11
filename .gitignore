@@ -162,8 +162,4 @@ cython_debug/
 data/
 output/
 background_subtractor.py
-utilities.py
-preprocess.py
-detect.py
-main.py
-processor.py
+static_differences.py
