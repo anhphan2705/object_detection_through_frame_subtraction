@@ -9,7 +9,7 @@ class VideoProcessor:
     DEFAULT_BLACK_THRESHOLD = 50
     
     
-    def __init__(self, source_path, preprocess, tracking, white_threshold=DEFAULT_WHITE_THRESHOLD, black_threshold=DEFAULT_BLACK_THRESHOLD):
+    def __init__(self, source_path: str, preprocess: object, tracking: object, white_threshold=DEFAULT_WHITE_THRESHOLD, black_threshold=DEFAULT_BLACK_THRESHOLD):
         self.video = cv2.VideoCapture(source_path)
         self.FPS = self.video.get(cv2.CAP_PROP_FPS)
         self.TOTAL_FRAME = self.video.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -17,12 +17,12 @@ class VideoProcessor:
         # self.FRAME_HEIGHT = int(self.video.get(4))
         # self.FRAME_SIZE = (self.FRAME_WIDTH, self.FRAME_HEIGHT)
         self.preprocess = preprocess
+        print(type(tracking))
         self.tracking = tracking
         self.black_threshold = black_threshold
         self.white_threshold = white_threshold
         self.frame_count = 0
-        self.temp_stationary_objects = []
-        self.stationary_objects = {}
+        self.temp_stationary = []
         self.background_frame = np.array([])
 
 
@@ -68,27 +68,6 @@ class VideoProcessor:
         difference_mask = cv2.dilate(difference_mask, (7, 7))
         
         return difference_mask
-
-
-    def track_objects(self, frame, difference_mask):
-        """
-        Track objects in a frame based on a difference mask.
-
-        Parameters:
-            frame (numpy.ndarray): The input frame.
-            difference_mask (numpy.ndarray): The difference mask.
-
-        Returns:
-            Tuple[numpy.ndarray, list]: A tuple containing the frame with objects tracked and a list of detected objects.
-        """
-        detected_frame, detected_objects = self.tracking.find_objects(frame, difference_mask)
-        return detected_frame, detected_objects
-
-
-    def find_stationary_objects(self, new_objects):
-        # Implement logic to find stationary objects
-        stationary_objects = []
-        return stationary_objects
 
 
     def write_log(self):
@@ -217,13 +196,27 @@ class VideoProcessor:
             difference_mask = self.detect_differences(self.background_frame, processed_frame)
             
             # Tracking objects
-            tracked_frame, object_detected = self.track_objects(frame, difference_mask)
+            tracked_frame, object_detected = self.tracking.find_objects(frame, difference_mask)
 
             # Track stationary objects
             if self.frame_count % self.tracking.DEFAULT_TRACK_RATE == 0:
-                prev_stationary_objects = self.temp_stationary_objects
-                self.temp_stationary_objects = self.tracking.find_temp_stationary(prev_objects=self.temp_stationary_objects, new_objects=object_detected)
-            
+                prev_temp_stationary = self.temp_stationary
+                
+                self.temp_stationary = self.tracking.find_potential_stationary(
+                    prev_objects=self.temp_stationary, 
+                    new_objects=object_detected
+                )
+                
+                self.tracking.update_stationary_objects(
+                    frame_count=self.frame_count, 
+                    prev_temp_stationary=prev_temp_stationary, 
+                    temp_stationary=self.temp_stationary, 
+                    frame=frame
+                )
+                # self.tracking.find_stationary_objects(frame_count=self.frame_count, prev_objects=prev_temp_stationary, new_objects=self.temp_stationary, frame=frame)
+                
+                print(self.temp_stationary)
+                print(self.tracking.get_stationary_objects())
             cv2.imshow("Video", tracked_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
