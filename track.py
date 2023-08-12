@@ -82,7 +82,7 @@ class Tracking:
         
         # Comparing
         for existing_box in existing_boxes:
-            # COORDINATES OF THE INTERSECTION BOX
+            # Coordinates of the intersection box
             x1 = max(new_box[0], existing_box[0])
             y1 = max(new_box[1], existing_box[1])
             x2 = min(new_box[2], existing_box[2])
@@ -92,12 +92,12 @@ class Tracking:
             width = x2 - x1
             height = y2 - y1
             
-            # handle case where there is NO overlap
+            # Handle case where there is NO overlap
             if (width < 0) or (height < 0):
-                return False
-            area_overlap = width * height
+                continue
 
             # COMBINED AREA
+            area_overlap = width * height
             area_a = (new_box[2] - new_box[0]) * (new_box[3] - new_box[1])
             area_b = (existing_box[2] - existing_box[0]) * (existing_box[3] - existing_box[1])
             area_combined = area_a + area_b - area_overlap
@@ -107,8 +107,8 @@ class Tracking:
 
             # Determine if it is overlapping
             if iou > iou_thres:
-                if (area_a / area_b) > 1.3 :
-                    return False
+                # if (area_a / area_b) > 1.3 :
+                #     continue
                 return True
         return False
     
@@ -132,6 +132,11 @@ class Tracking:
                 filtered_objects.append(obj_box)
 
         return filtered_objects
+    
+    
+    def reset_stationary_status(self):
+        for key, value in self.stationary_objects.items():
+            value[0] = False
         
     
     def find_objects(self, frame, difference_mask):
@@ -146,6 +151,7 @@ class Tracking:
             numpy.ndarray: The image with rectangles drawn around the detected objects.
         """
         detected_objects = []
+        tracked_frame = frame.copy()
         contours = self.get_contours(difference_mask)
         
         # Filter overlapping contours
@@ -154,16 +160,16 @@ class Tracking:
             if area > self.MIN_SIZE_THRESHOLD:
                 x, y, w, h = cv2.boundingRect(contour)
                 object_box = [x, y, x + w, y + h]
-                if not self.is_overlapping(object_box, detected_objects, iou_threshold=0.015):
+                if not self.is_overlapping(object_box, detected_objects, iou_threshold=0.02):
                     detected_objects.append(object_box)
     
         filtered_objects = self.filter_ignored_objects(detected_objects) 
 
         for box in filtered_objects:
             x1, y1, x2, y2 = box
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.rectangle(tracked_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-        return frame, filtered_objects
+        return tracked_frame, filtered_objects
     
     
     def find_potential_stationary(self, prev_objects, new_objects):
@@ -182,44 +188,14 @@ class Tracking:
             return new_objects
         else:
             for obj in new_objects:
-                if not self.is_overlapping(obj, prev_objects):
+                if self.is_overlapping(obj, prev_objects):
                     stationary_objects.append(obj)
         if len(stationary_objects) == 0:
             return new_objects
         else:
             return stationary_objects
         
-    
-    def update_stationary_objects(self, frame_count, prev_temp_stationary, temp_stationary, frame):
-        """
-        Updates the list of stationary objects based on frame differences.
-
-        Parameters:
-            frame_count (int): The current frame count.
-            prev_temp_stationary (list): List of positions of stationary objects in the previous frame.
-            temp_stationary (list): List of positions of objects in the current frame.
-            frame (numpy.ndarray): The current frame.
-
-        Returns:
-            dict: Updated dictionary of stationary object information.
-        """
-        stationary_potentials = []
-        for new_object in temp_stationary:
-            if self.is_overlapping(new_object, prev_temp_stationary):
-                stationary_potentials.append(new_object)
-
-        if self.stationary_objects is None:
-            self.stationary_objects = {}
-            for i, pos in enumerate(stationary_potentials):
-                self.stationary_objects[i] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, pos]
-                self.save_still_image(frame, pos, i)
-        else:
-            self.update_existing_stationary_objects(stationary_potentials, self.stationary_objects)
-            self.add_new_stationary_object(stationary_potentials, frame_count, frame)
-
-        return self.stationary_objects
-
-
+        
     def update_existing_stationary_objects(self, stationary_potentials, frame_count):
         """
         Updates the status of existing stationary objects.
@@ -227,6 +203,7 @@ class Tracking:
         Parameters:
             stationary_potentials (list): List of positions of potentially stationary objects.
         """
+        
         for stationary_potential in stationary_potentials.copy():
             for key, value in self.stationary_objects.items():
                 prev_stationary = value[3]
@@ -237,6 +214,7 @@ class Tracking:
                     if stationary_potential in stationary_potentials:
                         stationary_potentials.remove(stationary_potential)
                     break
+
 
     def add_new_stationary_object(self, stationary_potentials, frame_count, frame):
         """
@@ -252,6 +230,7 @@ class Tracking:
             self.stationary_objects[index] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
             self.save_still_image(frame, position, index)
 
+
     def save_still_image(self, frame, position, index):
         """
         Saves a cropped image of a stationary object.
@@ -263,40 +242,37 @@ class Tracking:
         """
         x1, y1, x2, y2 = position
         cropped_image = frame[y1:y2, x1:x2]
-        image_path = f"./output/still_id_{index}.jpg"
+        image_path = f"./output/id_{index}.jpg"
         cv2.imwrite(image_path, cropped_image)
+        
+        
+    def update_stationary_objects(self, frame_count, prev_temp_stationary, temp_stationary, frame):
+        """
+        Updates the list of stationary objects based on frame differences.
 
+        Parameters:
+            frame_count (int): The current frame count.
+            prev_temp_stationary (list): List of positions of stationary objects in the previous frame.
+            temp_stationary (list): List of positions of objects in the current frame.
+            frame (numpy.ndarray): The current frame.
+
+        Returns:
+            dict: Updated dictionary of stationary object information.
+        """
+        stationary_potentials = []
+        self.reset_stationary_status()
         
-        
-    # def find_stationary_objects(self, frame_count, prev_objects, new_objects, frame):
-    #     stationary_potentials = []
-    #     # Reseting active status for all stationary objects
-    #     if self.stationary_objects is not None:
-    #         for key, value in self.stationary_objects.items():
-    #             value[0] = False
-    #             self.stationary_objects.update({key:value})
-        
-    #     # Determine if detected objects are currently stationary
-    #     for stationary_object in new_objects:
-    #         if not self.is_overlapping(stationary_object, prev_objects):
-    #             stationary_potentials.append(stationary_object)
-                
-    #     if self.stationary_objects is None:
-    #         for i, pos in enumerate(stationary_potentials):
-    #             self.stationary_objects.update({i:[True, frame_count-3*self.DEFAULT_TRACK_RATE, frame_count, pos]})
-    #             cv2.imwrite(f"./output//still_id_{i}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])
-    #     else:
-    #         for pos in stationary_potentials.copy():
-    #             for key, value in self.stationary_objects.items():
-    #                 pass
-    #                 prev_stationary = value[3]
-    #                 if self.is_overlapping(prev_stationary, [pos]):
-    #                     value = [True, value[1], frame_count, pos]
-    #                     self.stationary_objects.update({key:value})
-    #                     if len(stationary_potentials) > 0:
-    #                         stationary_potentials.remove(pos)
-    #                     break
-    #         if len(stationary_potentials) > 0:
-    #             for pos in stationary_potentials:
-    #                 self.stationary_objects.update({len(self.stationary_objects):[True, frame_count-3*self.DEFAULT_TRACK_RATE, frame_count, pos]})  
-    #                 cv2.imwrite(f"./output/still_id_{len(self.stationary_objects)-1}.jpg", frame[pos[1]: pos[3], pos[0]: pos[2]])         
+        if prev_temp_stationary or temp_stationary:
+            for new_object in temp_stationary:
+                if self.is_overlapping(new_object, prev_temp_stationary):
+                    stationary_potentials.append(new_object)
+                    
+        if self.stationary_objects is None:
+            for i, position in enumerate(stationary_potentials):
+                self.stationary_objects[i] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
+                self.save_still_image(frame, position, i)
+        else:
+            self.update_existing_stationary_objects(stationary_potentials, frame_count)
+            self.add_new_stationary_object(stationary_potentials, frame_count, frame)
+
+        return self.stationary_objects

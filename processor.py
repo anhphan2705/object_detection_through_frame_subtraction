@@ -17,7 +17,6 @@ class VideoProcessor:
         # self.FRAME_HEIGHT = int(self.video.get(4))
         # self.FRAME_SIZE = (self.FRAME_WIDTH, self.FRAME_HEIGHT)
         self.preprocess = preprocess
-        print(type(tracking))
         self.tracking = tracking
         self.black_threshold = black_threshold
         self.white_threshold = white_threshold
@@ -213,10 +212,8 @@ class VideoProcessor:
                     temp_stationary=self.temp_stationary, 
                     frame=frame
                 )
-                # self.tracking.find_stationary_objects(frame_count=self.frame_count, prev_objects=prev_temp_stationary, new_objects=self.temp_stationary, frame=frame)
-                
-                print(self.temp_stationary)
-                print(self.tracking.get_stationary_objects())
+
+                print("dict", self.tracking.get_stationary_objects())
             cv2.imshow("Video", tracked_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
