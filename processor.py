@@ -7,15 +7,27 @@ class VideoProcessor:
     # Constant
     DEFAULT_WHITE_THRESHOLD = 225
     DEFAULT_BLACK_THRESHOLD = 50
+    DEFAULT_OUT_PATH = './output'
     
     
-    def __init__(self, source_path: str, preprocess: object, tracking: object, white_threshold=DEFAULT_WHITE_THRESHOLD, black_threshold=DEFAULT_BLACK_THRESHOLD):
+    def __init__(self, source_path: str, out_path: str, preprocess: object, tracking: object, white_threshold=DEFAULT_WHITE_THRESHOLD, black_threshold=DEFAULT_BLACK_THRESHOLD):
+        """
+        Initializes a VideoProcessor object for processing videos apply stationary object detection.
+
+        Parameters:
+            source_path (str): The path to the input video file.
+            out_path (str): The directory where output files will be saved.
+            preprocess (object): The preprocessing techniques to be applied on each frame.
+            tracking (object): The tracking methods to be used for object detection.
+            white_threshold (int): Threshold for considering differences as white.
+            black_threshold (int): Threshold for considering differences as black.
+        """
         self.video = cv2.VideoCapture(source_path)
+        self.OUT_PATH = out_path
         self.FPS = self.video.get(cv2.CAP_PROP_FPS)
         self.TOTAL_FRAME = self.video.get(cv2.CAP_PROP_FRAME_COUNT)
-        # self.FRAME_WIDTH = int(self.video.get(3))
-        # self.FRAME_HEIGHT = int(self.video.get(4))
-        # self.FRAME_SIZE = (self.FRAME_WIDTH, self.FRAME_HEIGHT)
+        self.FRAME_WIDTH = int(self.video.get(3))
+        self.FRAME_HEIGHT = int(self.video.get(4))
         self.preprocess = preprocess
         self.tracking = tracking
         self.black_threshold = black_threshold
@@ -76,7 +88,7 @@ class VideoProcessor:
         Parameters:
             log_path (str, optional): The path to the log file. Default is './output/log.txt'.
         """
-        log = open('./output/log.txt', 'w')
+        log = open(self.OUT_PATH + '/log.txt', 'w')
         textLines = []
         textLines.append('############################## Detected New Stationary Objects ##############################\n')
         for key, value in stationary_objects.items():
@@ -128,6 +140,10 @@ class VideoProcessor:
         self.TOTAL_FRAME, self.preprocess_frame, self.detect_differences, self.tracking,
         self.temp_stationary, self.write_log, and other necessary attributes.
         """
+        # Start recording
+        fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        result_video = cv2.VideoWriter(self.DEFAULT_OUT_PATH + '/output.mp4', fourcc, 30.0, (self.FRAME_WIDTH, self.FRAME_HEIGHT))
+        
         since = time.time()
         while True:
             ret, frame = self.video.read()
@@ -141,7 +157,7 @@ class VideoProcessor:
             processed_frame = self.preprocess_frame(frame)
             
             # Select the first frame to compare to
-            # IF YOU WANT TO SELECT MORE FRAME TO COMPARETHROUGH OUT THE VIDEO DO IT HERE
+            # IF YOU WANT TO SELECT MORE FRAME TO COMPARE THROUGH OUT THE VIDEO DO IT HERE
             if self.frame_count == 1:
                 self.set_background_frame(processed_frame)
             
@@ -173,11 +189,15 @@ class VideoProcessor:
             # Set label to frame
             result_frame = self.tracking.set_label(tracked_frame)
             
+            # Write frame
+            result_video.write(result_frame)
+            
             # Show frame
             cv2.imshow("Video", result_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
             
         self.video.release()
+        result_video.release()
         cv2.destroyAllWindows()
         

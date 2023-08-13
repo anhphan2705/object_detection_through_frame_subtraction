@@ -3,12 +3,22 @@ import ast
 
 class Tracking:
     
+    # Constant
     DEFAULT_TRACK_RATE = 30
     DEFAULT_MIN_SIZE = 750
     DEFAULT_IOU_THRESHOLD = 0.87
     
     
     def __init__(self, track_rate=DEFAULT_TRACK_RATE, ignore_path=None, min_size=DEFAULT_MIN_SIZE, iou_threshold=DEFAULT_IOU_THRESHOLD):
+        """
+        Initializes a Tracking object for tracking objects and detect stationary objects.
+
+        Parameters:
+            track_rate (int, optional): The rate at which tracking is performed (in frames). Default is 30.
+            ignore_path (str, optional): Path to a file containing ignored regions for tracking.
+            min_size (int, optional): Minimum size threshold for considering detected objects. Default is 750.
+            iou_threshold (float, optional): Intersection over Union threshold for object overlap. Default is 0.87.
+        """
         self.TRACKRATE = track_rate
         self.ignores = self.get_ignore_list(ignore_path) if ignore_path else None
         self.MIN_SIZE_THRESHOLD = min_size
