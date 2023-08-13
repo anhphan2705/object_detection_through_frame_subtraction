@@ -69,7 +69,7 @@ class VideoProcessor:
         return difference_mask
 
 
-    def write_log(self):
+    def write_log(self, stationary_objects):
         """
         Write information about detected stationary objects to a log file.
 
@@ -79,10 +79,10 @@ class VideoProcessor:
         log = open('./output/log.txt', 'w')
         textLines = []
         textLines.append('############################## Detected New Stationary Objects ##############################\n')
-        for key, value in self.still_objects.items():
-            [status, start_frame, end_frame, pos] = value
-            time_still = time_still = (end_frame - start_frame) // self.FPS
-            text = f'[ID: {key}]    Existing in frame: {status} | Time existed: {(time_still // 60):.0f}m{(time_still % 60):.0f}s | Position: ({pos[0]}, {pos[1]}) ({pos[2]}, {pos[3]})\n'
+        for key, value in stationary_objects.items():
+            [status, start_frame, end_frame, position] = value
+            duration = (end_frame - start_frame) // self.FPS
+            text = f'[ID: {key}]    Existing in frame: {status} | Time existed: {(duration // 60):.0f}m{(duration % 60):.0f}s | Position: ({position[0]}, {position[1]}) ({position[2]}, {position[3]})\n'
             textLines.append(text)
         log.writelines(textLines) 
         log.close()
@@ -105,78 +105,29 @@ class VideoProcessor:
             end=" ",
             flush=True,
         )
-    
-    
-    def set_label(self, frame, box_pos, key, time_still, thickness=2, color=(51, 153, 255), font_size=0.7):
-        """
-        Annotates an image on a bounding box with relevant information such as ID and stationary time.
         
-        Args:
-            frame (numpy.ndarray): The input image or frame to annotate.
-            box_pos (tuple): A tuple representing the position of the bounding box
-                in the format (x1, y1, x2, y2), where (x1, y1) is the top-left corner
-                and (x2, y2) is the bottom-right corner of the bounding box.
-            key (str): An identifier or label associated with the bounding box.
-            time_still (float): The time duration (in seconds) indicating how long
-                the object in the bounding box has been still.
-            thickness (int, optional): The thickness of the text. Default is 2.
-            color (tuple, optional): The color of the text in BGR format. Default is (51, 153, 255),
-                which corresponds to a shade of orange.
-            font_size (float, optional): The font size of the text. Default is 0.7.
-
-        Returns:
-            numpy.ndarray: An annotated image with bounding box and text information.
-
-        Note:
-            This function uses the OpenCV library to draw text on the input frame.
-        """
-        x1, y1, x2, y2 = box_pos
-        # Draw the object identifier (key)
-        frame = cv2.putText(frame,
-                            f'ID={key}',
-                            org=(x1 + 2, y2 - 4),
-                            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                            fontScale=font_size,
-                            color=color,
-                            thickness=thickness,
-                            lineType=cv2.LINE_AA)
         
-        # Draw the time duration in minutes and seconds
-        frame = cv2.putText(frame,
-                            f'{int(time_still // 60):d}m {int(time_still % 60):d}s',
-                            org=(x1 + 2, y1 - 4),
-                            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                            fontScale=font_size,
-                            color=color,
-                            thickness=thickness,
-                            lineType=cv2.LINE_AA)
-        return frame
+    def set_background_frame(self, frame):
+        """
+        Set the input frame as the background frame.
 
-    # def process_video(self):
-    #     while True:
-    #         ret, frame = self.video.read()
-    #         if not ret:
-    #             break
-
-    #         preprocessed_frame = self.preprocess_frame(frame)
-    #         if self.frame_count == 0:
-    #             prev_frame = preprocessed_frame
-    #         difference_mask = self.detect_differences(prev_frame, preprocessed_frame)
-    #         tracked_frame = self.track_objects(preprocessed_frame, difference_mask)
-
-    #         stationary_objects = self.find_stationary_objects(new_objects)
-    #         self.still_objects = stationary_objects
-
-    #         self.write_log()
-
-    #         self.frame_count += 1
-    #         prev_frame = preprocessed_frame
-
-    #     self.video.release()
+        Parameters:
+            frame (numpy.ndarray): The frame to be set as the background frame.
+        """
+        self.background_frame = frame
     
     
     def process_video(self):
-        
+        """
+        Process a video by iterating over frames, applying preprocessing, detecting objects,
+        tracking stationary objects, updating logs, and displaying frames.
+
+        The loop continues until all frames are processed or the user stops it.
+
+        Note: You should have the appropriate values assigned to self.video, self.frame_count,
+        self.TOTAL_FRAME, self.preprocess_frame, self.detect_differences, self.tracking,
+        self.temp_stationary, self.write_log, and other necessary attributes.
+        """
         since = time.time()
         while True:
             ret, frame = self.video.read()
@@ -188,8 +139,11 @@ class VideoProcessor:
 
             # Preprocess Frame
             processed_frame = self.preprocess_frame(frame)
+            
+            # Select the first frame to compare to
+            # IF YOU WANT TO SELECT MORE FRAME TO COMPARETHROUGH OUT THE VIDEO DO IT HERE
             if self.frame_count == 1:
-                self.background_frame = processed_frame
+                self.set_background_frame(processed_frame)
             
             # Doing background subtraction
             difference_mask = self.detect_differences(self.background_frame, processed_frame)
@@ -212,9 +166,15 @@ class VideoProcessor:
                     temp_stationary=self.temp_stationary, 
                     frame=frame
                 )
-
-                print("dict", self.tracking.get_stationary_objects())
-            cv2.imshow("Video", tracked_frame)
+                
+                # Update log
+                self.write_log(self.tracking.get_stationary_objects())
+            
+            # Set label to frame
+            result_frame = self.tracking.set_label(tracked_frame)
+            
+            # Show frame
+            cv2.imshow("Video", result_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
             

@@ -60,6 +60,55 @@ class Tracking:
         return self.stationary_objects
     
 
+    def set_label(self, frame, thickness=2, color=(51, 153, 255), font_size=0.7):
+        """ 
+        Annotates an image on a bounding box with relevant information such as ID and stationary time.
+        
+        Args:
+            frame (numpy.ndarray): The input image or frame to annotate.
+            thickness (int, optional): The thickness of the text. Default is 2.
+            color (tuple, optional): The color of the text in BGR format. Default is orange (51, 153, 255)
+            font_size (float, optional): The font size of the text. Default is 0.7.
+
+        Returns:
+            numpy.ndarray: An annotated image with bounding box and text information.
+
+        Note:
+            This function uses the OpenCV library to draw text on the input frame.
+        """
+        for key, value in self.stationary_objects.items():
+            [active, start_frame, end_frame, position] = value
+            if active:
+                duration = (end_frame - start_frame) // self.DEFAULT_TRACK_RATE
+                x1, y1, x2, y2 = position
+                
+                # Draw the object identifier (key)
+                frame = cv2.putText(
+                    frame,
+                    f'ID={key}',
+                    org=(x1 + 2, y2 - 4),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=font_size,
+                    color=color,
+                    thickness=thickness,
+                    lineType=cv2.LINE_AA
+                )
+                
+                # Draw the time duration in minutes and seconds
+                frame = cv2.putText(
+                    frame,
+                    f'{int(duration // 60):d}m {int(duration % 60):d}s',
+                    org=(x1 + 2, y1 - 4),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=font_size,
+                    color=color,
+                    thickness=thickness,
+                    lineType=cv2.LINE_AA
+                )
+                
+        return frame
+    
+
     def is_overlapping(self, new_box, existing_boxes, iou_threshold=None, epsilon=1e-5):
         """
         Checks if a new bounding box overlaps with any of the existing bounding boxes.
