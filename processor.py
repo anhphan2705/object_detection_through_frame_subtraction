@@ -76,7 +76,7 @@ class VideoProcessor:
         difference_mask[obj_loc] = 255
         
         # Dilate the result to enhance differences
-        difference_mask = cv2.dilate(difference_mask, (7, 7))
+        difference_mask = cv2.dilate(difference_mask, (5, 5))
         
         return difference_mask
 
@@ -141,8 +141,8 @@ class VideoProcessor:
         self.temp_stationary, self.write_log, and other necessary attributes.
         """
         # Start recording
-        fourcc = cv2.VideoWriter_fourcc(*"avc1")
-        result_video = cv2.VideoWriter(self.DEFAULT_OUT_PATH + '/output.mp4', fourcc, 30.0, (self.FRAME_WIDTH, self.FRAME_HEIGHT))
+        # fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        # result_video = cv2.VideoWriter(self.DEFAULT_OUT_PATH + '/result_video.mp4', fourcc, 30.0, (self.FRAME_WIDTH, self.FRAME_HEIGHT))
         
         since = time.time()
         while True:
@@ -190,14 +190,14 @@ class VideoProcessor:
             result_frame = self.tracking.set_label(tracked_frame)
             
             # Write frame
-            result_video.write(result_frame)
+            # result_video.write(result_frame)
             
             # Show frame
-            cv2.imshow("Video", result_frame)
+            cv2.imshow("Video", tracked_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
             
         self.video.release()
-        result_video.release()
+        # result_video.release()
         cv2.destroyAllWindows()
         

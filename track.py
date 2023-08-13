@@ -6,7 +6,7 @@ class Tracking:
     # Constant
     DEFAULT_TRACK_RATE = 30
     DEFAULT_MIN_SIZE = 750
-    DEFAULT_IOU_THRESHOLD = 0.87
+    DEFAULT_IOU_THRESHOLD = 0.86
     
     
     def __init__(self, track_rate=DEFAULT_TRACK_RATE, ignore_path=None, min_size=DEFAULT_MIN_SIZE, iou_threshold=DEFAULT_IOU_THRESHOLD):
@@ -166,8 +166,6 @@ class Tracking:
 
             # Determine if it is overlapping
             if iou > iou_thres:
-                # if (area_a / area_b) > 1.3 :
-                #     continue
                 return True
         return False
     
@@ -194,6 +192,9 @@ class Tracking:
     
     
     def reset_stationary_status(self):
+        """
+        Reset the stationary status of objects in the stationary_objects dictionary to False.
+        """
         for key, value in self.stationary_objects.items():
             value[0] = False
         
@@ -261,8 +262,11 @@ class Tracking:
 
         Parameters:
             stationary_potentials (list): List of positions of potentially stationary objects.
-        """
+            frame_count (int): The current frame count.
         
+        Return:
+            new_stationary_potentials (list): List of left over position that appears to be new and has not been added
+        """
         for stationary_potential in stationary_potentials.copy():
             for key, value in self.stationary_objects.items():
                 prev_stationary = value[3]
@@ -270,11 +274,10 @@ class Tracking:
                     value[0] = True
                     value[2] = frame_count
                     value[3] = stationary_potential
-                    if stationary_potential in stationary_potentials:
-                        stationary_potentials.remove(stationary_potential)
+                    stationary_potentials.remove(stationary_potential)
                     break
-
-
+                
+        
     def add_new_stationary_object(self, stationary_potentials, frame_count, frame):
         """
         Adds new stationary objects to the dictionary.
@@ -285,23 +288,23 @@ class Tracking:
             frame (numpy.ndarray): The current frame.
         """
         for position in stationary_potentials:
-            index = len(self.stationary_objects)
-            self.stationary_objects[index] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
-            self.save_still_image(frame, position, index)
+            id = len(self.stationary_objects)
+            self.stationary_objects[id] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
+            self.save_still_image(frame, position, id)
 
 
-    def save_still_image(self, frame, position, index):
+    def save_still_image(self, frame, position, id):
         """
         Saves a cropped image of a stationary object.
 
         Parameters:
             frame (numpy.ndarray): The current frame.
             position (tuple): Bounding box coordinates (x1, y1, x2, y2) of the stationary object.
-            index (int): Index of the stationary object.
+            id (int): Index of the stationary object.
         """
         x1, y1, x2, y2 = position
         cropped_image = frame[y1:y2, x1:x2]
-        image_path = f"./output/id_{index}.jpg"
+        image_path = f"./output/id_{id}.jpg"
         cv2.imwrite(image_path, cropped_image)
         
         
@@ -321,17 +324,17 @@ class Tracking:
         stationary_potentials = []
         self.reset_stationary_status()
         
-        if prev_temp_stationary or temp_stationary:
+        if prev_temp_stationary:
             for new_object in temp_stationary:
                 if self.is_overlapping(new_object, prev_temp_stationary):
                     stationary_potentials.append(new_object)
                     
-        if self.stationary_objects is None:
-            for i, position in enumerate(stationary_potentials):
-                self.stationary_objects[i] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
-                self.save_still_image(frame, position, i)
+        if not self.stationary_objects:
+            for id, position in enumerate(stationary_potentials):
+                self.stationary_objects[id] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
+                self.save_still_image(frame, position, id)
         else:
             self.update_existing_stationary_objects(stationary_potentials, frame_count)
             self.add_new_stationary_object(stationary_potentials, frame_count, frame)
-
+            
         return self.stationary_objects
