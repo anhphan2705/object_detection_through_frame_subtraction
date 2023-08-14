@@ -40,7 +40,6 @@ def main():
     parser.add_argument("--save", type=bool, help="(bool) True to turn on saving result video in preprocessing, False otherwise", action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()
     
-    
     pre_process = PreProcessImage(
         gray=args.gray, 
         contrast=args.contrast, 
