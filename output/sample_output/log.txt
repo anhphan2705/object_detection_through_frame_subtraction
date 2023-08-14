@@ -1,0 +1,3 @@
+############################## Detected New Stationary Objects ##############################
+[ID: 0]    Existing in frame: False | Time existed: 0m5s | Position: (1848, 905) (1905, 976)
+[ID: 1]    Existing in frame: True | Time existed: 0m7s | Position: (751, 454) (832, 557)
