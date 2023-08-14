@@ -160,6 +160,3 @@ cython_debug/
 #.idea/
 
 data/
-output/
-background_subtractor.py
-static_differences.py

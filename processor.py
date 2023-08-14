@@ -201,4 +201,3 @@ class VideoProcessor:
         self.video.release()
         # result_video.release()
         cv2.destroyAllWindows()
-        
