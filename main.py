@@ -1,7 +1,7 @@
 import argparse
 from processor import VideoProcessor
 from preprocess import PreProcessImage
-from track import Tracking
+from tracker import Tracking
 
 
 def main():
