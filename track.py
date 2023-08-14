@@ -6,7 +6,7 @@ class Tracking:
     # Constant
     DEFAULT_TRACK_RATE = 30
     DEFAULT_MIN_SIZE = 750
-    DEFAULT_IOU_THRESHOLD = 0.86
+    DEFAULT_IOU_THRESHOLD = 0.87
     
     
     def __init__(self, track_rate=DEFAULT_TRACK_RATE, ignore_path=None, min_size=DEFAULT_MIN_SIZE, iou_threshold=DEFAULT_IOU_THRESHOLD):
@@ -19,10 +19,10 @@ class Tracking:
             min_size (int, optional): Minimum size threshold for considering detected objects. Default is 750.
             iou_threshold (float, optional): Intersection over Union threshold for object overlap. Default is 0.87.
         """
-        self.TRACKRATE = track_rate
-        self.ignores = self.get_ignore_list(ignore_path) if ignore_path else None
+        self.TRACK_RATE = track_rate
         self.MIN_SIZE_THRESHOLD = min_size
         self.IOU_THRESHOLD = iou_threshold
+        self.ignores = self.get_ignore_list(ignore_path) if ignore_path else None
         self.stationary_objects = {}
         
 
@@ -70,7 +70,7 @@ class Tracking:
         return self.stationary_objects
     
 
-    def set_label(self, frame, thickness=2, color=(51, 153, 255), font_size=0.7):
+    def set_label(self, frame, fps, thickness=2, color=(51, 153, 255), font_size=0.7):
         """ 
         Annotates an image on a bounding box with relevant information such as ID and stationary time.
         
@@ -89,7 +89,7 @@ class Tracking:
         for key, value in self.stationary_objects.items():
             [active, start_frame, end_frame, position] = value
             if active:
-                duration = (end_frame - start_frame) // self.DEFAULT_TRACK_RATE
+                duration = (end_frame - start_frame) // fps
                 x1, y1, x2, y2 = position
                 
                 # Draw the object identifier (key)
@@ -278,7 +278,7 @@ class Tracking:
                     break
                 
         
-    def add_new_stationary_object(self, stationary_potentials, frame_count, frame):
+    def add_new_stationary_object(self, stationary_potentials, frame_count, frame, out_path):
         """
         Adds new stationary objects to the dictionary.
 
@@ -286,14 +286,15 @@ class Tracking:
             stationary_potentials (list): List of positions of potentially stationary objects.
             frame_count (int): The current frame count.
             frame (numpy.ndarray): The current frame.
+            out_path (str): The directory where object's snapshot will be saved.
         """
         for position in stationary_potentials:
             id = len(self.stationary_objects)
-            self.stationary_objects[id] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
-            self.save_still_image(frame, position, id)
+            self.stationary_objects[id] = [True, frame_count - 3 * self.TRACK_RATE, frame_count, position]
+            self.save_stationary_snapshot(frame, position, id, out_path)
 
 
-    def save_still_image(self, frame, position, id):
+    def save_stationary_snapshot(self, frame, position, id, out_path):
         """
         Saves a cropped image of a stationary object.
 
@@ -301,14 +302,15 @@ class Tracking:
             frame (numpy.ndarray): The current frame.
             position (tuple): Bounding box coordinates (x1, y1, x2, y2) of the stationary object.
             id (int): Index of the stationary object.
+            out_path (str): The directory where object's snapshot will be saved.
         """
         x1, y1, x2, y2 = position
         cropped_image = frame[y1:y2, x1:x2]
-        image_path = f"./output/id_{id}.jpg"
+        image_path = out_path + f"/id_{id}.jpg"
         cv2.imwrite(image_path, cropped_image)
         
         
-    def update_stationary_objects(self, frame_count, prev_temp_stationary, temp_stationary, frame):
+    def update_stationary_objects(self, frame_count, prev_temp_stationary, temp_stationary, frame, out_path):
         """
         Updates the list of stationary objects based on frame differences.
 
@@ -317,6 +319,7 @@ class Tracking:
             prev_temp_stationary (list): List of positions of stationary objects in the previous frame.
             temp_stationary (list): List of positions of objects in the current frame.
             frame (numpy.ndarray): The current frame.
+            out_path (str): The directory where object's snapshot will be saved.
 
         Returns:
             dict: Updated dictionary of stationary object information.
@@ -324,17 +327,11 @@ class Tracking:
         stationary_potentials = []
         self.reset_stationary_status()
         
-        if prev_temp_stationary:
-            for new_object in temp_stationary:
-                if self.is_overlapping(new_object, prev_temp_stationary):
-                    stationary_potentials.append(new_object)
-                    
-        if not self.stationary_objects:
-            for id, position in enumerate(stationary_potentials):
-                self.stationary_objects[id] = [True, frame_count - 3 * self.DEFAULT_TRACK_RATE, frame_count, position]
-                self.save_still_image(frame, position, id)
-        else:
-            self.update_existing_stationary_objects(stationary_potentials, frame_count)
-            self.add_new_stationary_object(stationary_potentials, frame_count, frame)
+        for new_object in temp_stationary:
+            if self.is_overlapping(new_object, prev_temp_stationary):
+                stationary_potentials.append(new_object)
+                
+        self.update_existing_stationary_objects(stationary_potentials, frame_count)
+        self.add_new_stationary_object(stationary_potentials, frame_count, frame, out_path)
             
         return self.stationary_objects

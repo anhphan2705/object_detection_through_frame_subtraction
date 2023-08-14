@@ -76,7 +76,7 @@ class VideoProcessor:
         difference_mask[obj_loc] = 255
         
         # Dilate the result to enhance differences
-        difference_mask = cv2.dilate(difference_mask, (5, 5))
+        difference_mask = cv2.dilate(difference_mask, (7, 7))
         
         return difference_mask
 
@@ -168,7 +168,7 @@ class VideoProcessor:
             tracked_frame, object_detected = self.tracking.find_objects(frame, difference_mask)
 
             # Track stationary objects
-            if self.frame_count % self.tracking.DEFAULT_TRACK_RATE == 0:
+            if self.frame_count % self.tracking.TRACK_RATE == 0:
                 prev_temp_stationary = self.temp_stationary
                 
                 self.temp_stationary = self.tracking.find_potential_stationary(
@@ -180,20 +180,21 @@ class VideoProcessor:
                     frame_count=self.frame_count, 
                     prev_temp_stationary=prev_temp_stationary, 
                     temp_stationary=self.temp_stationary, 
-                    frame=frame
+                    frame=frame,
+                    out_path=self.OUT_PATH
                 )
                 
                 # Update log
                 self.write_log(self.tracking.get_stationary_objects())
             
             # Set label to frame
-            result_frame = self.tracking.set_label(tracked_frame)
+            result_frame = self.tracking.set_label(tracked_frame, fps=self.FPS)
             
             # Write frame
             # result_video.write(result_frame)
             
             # Show frame
-            cv2.imshow("Video", tracked_frame)
+            cv2.imshow("Video", result_frame)
             if cv2.waitKey(1) & 0xFF == ord("c"):
                 break
             
